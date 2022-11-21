@@ -20,27 +20,33 @@ import (
 )
 
 func BenchmarkTSCompareV1(b *testing.B) {
-	l1 := rand.Uint32()
-	l2 := rand.Uint32()
+	total := 3000
+	tsls := make([]TS, total)
+	tsrs := make([]TS, total)
+
+	for i := 0; i < total; i++ {
+		tsls[i] = BuildTS(rand.Int63n(100), rand.Uint32())
+		tsrs[i] = BuildTS(rand.Int63n(100), rand.Uint32())
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tsl := BuildTS(int64(i), l1+uint32(i))
-		tsr := BuildTS(int64(i), l2+uint32(i))
-
-		tsl.Compare(tsr)
+		tsls[i%total].Compare(tsrs[i%total])
 	}
 }
 
 func BenchmarkTSCompareV2(b *testing.B) {
-	l1 := rand.Uint32()
-	l2 := rand.Uint32()
+	total := 3000
+	tsls := make([]TS, total)
+	tsrs := make([]TS, total)
+
+	for i := 0; i < total; i++ {
+		tsls[i] = BuildTS(rand.Int63n(100), rand.Uint32())
+		tsrs[i] = BuildTS(rand.Int63n(100), rand.Uint32())
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tsl := BuildTS(int64(i), l1+uint32(i))
-		tsr := BuildTS(int64(i), l2+uint32(i))
-
-		tsl.CompareV2(tsr)
+		tsls[i%total].CompareV2(tsrs[i%total])
 	}
 }
