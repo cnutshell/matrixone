@@ -20,14 +20,22 @@ import (
 	"math"
 	"strconv"
 	"strings"
-
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/matrixorigin/matrixone/pkg/pb/timestamp"
 	"github.com/matrixorigin/matrixone/pkg/txn/clock"
 )
+
+var isLittleEndian bool
+
+func init() {
+	var x uint16 = 0xFF00
+	xb := *(*[2]byte)(unsafe.Pointer(&x))
+	isLittleEndian = (xb[0] == 0x00)
+}
 
 // Transaction ts contains a physical ts in higher 8 bytes
 // and a logical in lower 4 bytes.  higher lower in little
@@ -47,6 +55,8 @@ func (ts TS) Equal(rhs TS) bool {
 }
 
 // Compare physical first then logical.
+//
+//go:inline
 func (ts TS) Compare(rhs TS) int {
 	p1, p2 := ts.Physical(), rhs.Physical()
 	if p1 < p2 {
@@ -63,6 +73,135 @@ func (ts TS) Compare(rhs TS) int {
 		return 0
 	}
 	return 1
+}
+
+//go:inline
+func (ts TS) CompareV2(rhs TS) int {
+	physicalCmp := compareRawInt64LE(ts[4:12], rhs[4:12])
+	if physicalCmp != 0 {
+		return physicalCmp
+	}
+	return compareRawUint32LE(ts[:4], rhs[:4])
+}
+
+//go:inline
+func compareRawUint32(a, b []byte) int {
+	if len(a) != 4 || len(b) != 4 {
+		panic("invliad byte slice for uint32")
+	}
+
+	if isLittleEndian {
+		return compareRawUint32LE(a, b)
+	}
+	return compareRawUint32BE(a, b)
+}
+
+//go:inline
+func compareRawUint32BE(a, b []byte) int {
+	for _, i := range []int{0, 1, 2, 3} {
+		ai, bi := a[i], b[i]
+		if ai < bi {
+			return -1
+		}
+		if ai > bi {
+			return 1
+		}
+	}
+	return 0
+}
+
+//go:inline
+func compareRawUint32LE(a, b []byte) int {
+	for _, i := range []int{3, 2, 1, 0} {
+		ai, bi := a[i], b[i]
+		if ai < bi {
+			return -1
+		}
+		if ai > bi {
+			return 1
+		}
+	}
+	return 0
+}
+
+//go:inline
+func compareRawInt64(a, b []byte) int {
+	if len(a) != 8 || len(b) != 8 {
+		panic("invliad byte slice for int64")
+	}
+
+	if isLittleEndian {
+		return compareRawInt64LE(a, b)
+	}
+	return compareRawInt64BE(a, b)
+}
+
+//go:inline
+func compareRawInt64BE(a, b []byte) int {
+	aIsNegative := (a[0] & 0x80) != 0
+	bIsNegative := (b[0] & 0x80) != 0
+	if aIsNegative != bIsNegative {
+		if aIsNegative {
+			return -1
+		}
+		return 1
+	}
+
+	// compare significant byte
+	ai, bi := a[0]&0x7f, b[0]&0x7f
+	if ai < bi {
+		return -1
+	}
+	if ai > bi {
+		return 1
+	}
+
+	// compare the remaining bytes
+	for _, i := range []int{1, 2, 3, 4, 5, 6, 7} {
+		ai, bi := a[i], b[i]
+		if ai < bi {
+			return -1
+		}
+		if ai > bi {
+			return 1
+		}
+	}
+
+	return 0
+}
+
+//go:inline
+func compareRawInt64LE(a, b []byte) int {
+	aIsNegative := (a[7] & 0x80) != 0
+	bIsNegative := (b[7] & 0x80) != 0
+	if aIsNegative != bIsNegative {
+		if aIsNegative {
+			return -1
+		}
+		return 1
+	}
+
+	// compare significant byte
+	ai, bi := a[7]&0x7f, b[7]&0x7f
+	if ai < bi {
+		return -1
+	}
+	if ai > bi {
+		return 1
+	}
+
+	// compare the remaining bytes
+	for _, i := range []int{6, 5, 4, 3, 2, 1, 0} {
+		ai, bi := a[i], b[i]
+		if ai < bi {
+			return -1
+		}
+		if ai > bi {
+			return 1
+		}
+	}
+
+	return 0
 }
 
 func (ts TS) Less(rhs TS) bool {
