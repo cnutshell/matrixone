@@ -472,7 +472,7 @@ func (s *LogtailServer) logtailSender(ctx context.Context) {
 				s.waterline.Advance(to)
 			}
 
-			publishmentFunc()
+			publishmentFunc() // hello
 		}
 	}
 }
