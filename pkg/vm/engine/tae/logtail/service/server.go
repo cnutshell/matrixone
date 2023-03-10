@@ -500,3 +500,5 @@ func (s *LogtailServer) Start() error {
 
 	return s.rpc.Start()
 }
+
+// test
