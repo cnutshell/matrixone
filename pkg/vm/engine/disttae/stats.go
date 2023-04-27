@@ -17,6 +17,7 @@ package disttae
 import (
 	"context"
 
+	"github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/plan"
@@ -48,7 +49,7 @@ func maybeUnique(zm objectio.ZoneMap, rows uint32) bool {
 }
 
 // get minval , maxval, datatype from zonemap
-func getInfoFromZoneMap(ctx context.Context, columns []int, blocks *[][]BlockMeta, blockNumTotal int, tableDef *plan.TableDef, proc *process.Process) (*plan2.InfoFromZoneMap, error) {
+func getInfoFromZoneMap(ctx context.Context, columns []int, blocks *[][]catalog.BlockInfo, blockNumTotal int, tableDef *plan.TableDef, proc *process.Process) (*plan2.InfoFromZoneMap, error) {
 
 	lenCols := len(columns)
 	info := plan2.NewInfoFromZoneMap(lenCols, blockNumTotal)
@@ -59,7 +60,7 @@ func getInfoFromZoneMap(ctx context.Context, columns []int, blocks *[][]BlockMet
 	var init bool
 	for i := range *blocks {
 		for _, blk := range (*blocks)[i] {
-			location := blk.Info.MetaLocation()
+			location := blk.MetaLocation()
 			if !objectio.IsSameObjectLocVsMeta(location, objectMeta) {
 				if objectMeta, err = loadObjectMeta(ctx, location, proc.FileService, proc.Mp()); err != nil {
 					return nil, err
@@ -101,7 +102,7 @@ func getInfoFromZoneMap(ctx context.Context, columns []int, blocks *[][]BlockMet
 
 // calculate the stats for scan node.
 // we need to get the zonemap from cn, and eval the filters with zonemap
-func CalcStats(ctx context.Context, blocks *[][]BlockMeta, expr *plan.Expr, tableDef *plan.TableDef, proc *process.Process, sortKeyName string, s *plan2.StatsInfoMap) (*plan.Stats, error) {
+func CalcStats(ctx context.Context, blocks *[][]catalog.BlockInfo, expr *plan.Expr, tableDef *plan.TableDef, proc *process.Process, sortKeyName string, s *plan2.StatsInfoMap) (*plan.Stats, error) {
 	var blockNumNeed, blockNumTotal int
 	var tableCnt, cost int64
 	exprMono := plan2.CheckExprIsMonotonic(ctx, expr)
@@ -110,13 +111,13 @@ func CalcStats(ctx context.Context, blocks *[][]BlockMeta, expr *plan.Expr, tabl
 	for i := range *blocks {
 		for j, blk := range (*blocks)[i] {
 			blockNumTotal++
-			tableCnt += int64((*blocks)[i][j].Info.MetaLocation().Rows())
-			location := blk.Info.MetaLocation()
+			tableCnt += int64((*blocks)[i][j].MetaLocation().Rows())
+			location := blk.MetaLocation()
 			if !objectio.IsSameObjectLocVsMeta(location, meta) {
 				meta, _ = loadObjectMeta(ctx, location, proc.FileService, proc.Mp())
 			}
 			if !exprMono || needRead(ctx, expr, meta, (*blocks)[i][j], tableDef, columnMap, columns, maxCol, proc) {
-				cost += int64((*blocks)[i][j].Info.MetaLocation().Rows())
+				cost += int64((*blocks)[i][j].MetaLocation().Rows())
 				blockNumNeed++
 			}
 		}

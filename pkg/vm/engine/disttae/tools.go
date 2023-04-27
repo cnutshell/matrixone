@@ -1102,19 +1102,19 @@ func genBlockMetas(
 	return metas, nil
 }
 
-func inBlockMap(blk BlockMeta, blockMap map[types.Blockid]bool) bool {
-	_, ok := blockMap[blk.Info.BlockID]
+func inBlockMap(blk catalog.BlockInfo, blockMap map[types.Blockid]bool) bool {
+	_, ok := blockMap[blk.BlockID]
 	return ok
 }
 
-func genModifedBlocks(ctx context.Context, deletes map[types.Blockid][]int, orgs, modfs []BlockMeta,
+func genModifedBlocks(ctx context.Context, deletes map[types.Blockid][]int, orgs, modfs []catalog.BlockInfo,
 	expr *plan.Expr, tableDef *plan.TableDef, proc *process.Process) []ModifyBlockMeta {
 	blks := make([]ModifyBlockMeta, 0, len(orgs)-len(modfs))
 
 	lenblks := len(modfs)
 	blockMap := make(map[types.Blockid]bool, lenblks)
 	for i := 0; i < lenblks; i++ {
-		blockMap[modfs[i].Info.BlockID] = true
+		blockMap[modfs[i].BlockID] = true
 	}
 
 	exprMono := plantool.CheckExprIsMonotonic(ctx, expr)
@@ -1122,14 +1122,14 @@ func genModifedBlocks(ctx context.Context, deletes map[types.Blockid][]int, orgs
 	var meta objectio.ObjectMeta
 	for i, blk := range orgs {
 		if !inBlockMap(blk, blockMap) {
-			location := blk.Info.MetaLocation()
+			location := blk.MetaLocation()
 			if !objectio.IsSameObjectLocVsMeta(location, meta) {
 				meta, _ = loadObjectMeta(ctx, location, proc.FileService, proc.Mp())
 			}
 			if !exprMono || needRead(ctx, expr, meta, blk, tableDef, columnMap, columns, maxCol, proc) {
 				blks = append(blks, ModifyBlockMeta{
 					meta:    orgs[i],
-					deletes: deletes[orgs[i].Info.BlockID],
+					deletes: deletes[orgs[i].BlockID],
 				})
 			}
 		}

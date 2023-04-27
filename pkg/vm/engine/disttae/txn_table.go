@@ -262,7 +262,7 @@ func (tbl *txnTable) Ranges(ctx context.Context, expr *plan.Expr) ([][]byte, err
 	columnMap, columns, maxCol := plan2.GetColumnsByExpr(expr, tbl.getTableDef())
 	for _, i := range tbl.dnList {
 		blocks := tbl.blockMetas[i]
-		blks := make([]BlockMeta, 0, len(blocks))
+		blks := make([]catalog.BlockInfo, 0, len(blocks))
 		deletes := make(map[types.Blockid][]int)
 		if len(blocks) > 0 {
 			ts := tbl.db.txn.meta.SnapshotTS
@@ -271,9 +271,9 @@ func (tbl *txnTable) Ranges(ctx context.Context, expr *plan.Expr) ([][]byte, err
 				// if cn can see a appendable block, this block must contain all updates
 				// in cache, no need to do merge read, BlockRead will filter out
 				// invisible and deleted rows with respect to the timestamp
-				if !blocks[i].Info.EntryState {
-					if blocks[i].Info.CommitTs.ToTimestamp().Less(ts) { // hack
-						ids[i] = blocks[i].Info.BlockID
+				if !blocks[i].EntryState {
+					if blocks[i].CommitTs.ToTimestamp().Less(ts) { // hack
+						ids[i] = blocks[i].BlockID
 					}
 				}
 			}
@@ -303,15 +303,15 @@ func (tbl *txnTable) Ranges(ctx context.Context, expr *plan.Expr) ([][]byte, err
 				}
 			}
 			for i := range blocks {
-				if _, ok := deletes[blocks[i].Info.BlockID]; !ok {
+				if _, ok := deletes[blocks[i].BlockID]; !ok {
 					blks = append(blks, blocks[i])
 				}
 			}
 		}
 		var meta objectio.ObjectMeta
 		for _, blk := range blks {
-			tbl.skipBlocks[blk.Info.BlockID] = 0
-			location := blk.Info.MetaLocation()
+			tbl.skipBlocks[blk.BlockID] = 0
+			location := blk.MetaLocation()
 			if !objectio.IsSameObjectLocVsMeta(location, meta) {
 				meta, _ = loadObjectMeta(ctx, location, tbl.db.txn.proc.FileService, tbl.db.txn.proc.Mp())
 			}
@@ -891,8 +891,8 @@ func (tbl *txnTable) newReader(
 	if len(tbl.blockMetas) > 0 {
 		for _, blk := range tbl.blockMetas[0] {
 			// append non_append_block
-			if !blk.Info.EntryState {
-				non_append_block[string(blk.Info.BlockID[:])] = true
+			if !blk.EntryState {
+				non_append_block[string(blk.BlockID[:])] = true
 			}
 		}
 	}

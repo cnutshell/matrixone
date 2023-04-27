@@ -17,7 +17,6 @@ package disttae
 import (
 	"context"
 	"math"
-	"os"
 	"strings"
 	"time"
 	"unsafe"
@@ -26,7 +25,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
-	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/plan"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec"
@@ -44,9 +42,9 @@ func (txn *Transaction) getBlockMetas(
 	needUpdated bool,
 	columnLength int,
 	prefetch bool,
-) ([][]BlockMeta, error) {
+) ([][]catalog.BlockInfo, error) {
 
-	blocks := make([][]BlockMeta, len(txn.dnStores))
+	blocks := make([][]catalog.BlockInfo, len(txn.dnStores))
 	if prefetch {
 		return blocks, nil
 	}
@@ -61,32 +59,27 @@ func (txn *Transaction) getBlockMetas(
 			// var blockInfos []catalog.BlockInfo
 			state := states[i]
 			iter := state.Blocks.Iter()
-			var meta objectio.ObjectMeta
-			var err error
+			// var meta objectio.ObjectMeta
+			// var err error
 			for ok := iter.First(); ok; ok = iter.Next() {
 				entry := iter.Item()
 				if !entry.Visible(ts) {
 					continue
 				}
-				location := entry.BlockInfo.MetaLocation()
-				if !objectio.IsSameObjectLocVsMeta(location, meta) {
-					// meta, err = loadObjectMeta(context.Background(), location, txn.proc.FileService, txn.proc.Mp())
-					meta, err = loadObjectMeta(ctx, location, txn.proc.FileService, txn.proc.Mp())
-					if err != nil {
-						logutil.Infof("KKKKKKKKKKKKKK %v", err)
-						os.Exit(1)
-					}
-				}
-				blk := BlockMeta{Info: entry.BlockInfo}
-				blk.Rows = int64(location.Rows())
-				blk.Zonemap = make([]Zonemap, columnLength)
-				logutil.Infof("XXXXXXXXXXX %s, %d,%d", location.String(), columnLength, meta.BlockHeader().ColumnCount())
-				for j := 0; j < columnLength; j++ {
-					logutil.Infof("HHHHHHHH %s, %d,%d", location.String(), location.ID(), j)
-					copy(blk.Zonemap[j][:], meta.GetColumnMeta(uint32(location.ID()), uint16(j)).ZoneMap())
-				}
+				// location := entry.BlockInfo.MetaLocation()
+				// if !objectio.IsSameObjectLocVsMeta(location, meta) {
+				// 	// meta, err = loadObjectMeta(context.Background(), location, txn.proc.FileService, txn.proc.Mp())
+				// 	if meta, err = loadObjectMeta(ctx, location, txn.proc.FileService, txn.proc.Mp()); err != nil {
+				// 		return nil, err
+				// 	}
+				// }
+				// blk.Rows = int64(location.Rows())
+				// blk.Zonemap = make([]Zonemap, columnLength)
+				// for j := 0; j < columnLength; j++ {
+				// 	copy(blk.Zonemap[j][:], meta.GetColumnMeta(uint32(location.ID()), uint16(j)).ZoneMap())
+				// }
 				// blockInfos = append(blockInfos, entry.BlockInfo)
-				blocks[i] = append(blocks[i], blk)
+				blocks[i] = append(blocks[i], entry.BlockInfo)
 			}
 			iter.Release()
 			// var err error
@@ -446,7 +439,7 @@ func (txn *Transaction) genRowId() types.Rowid {
 }
 
 // needRead determine if a block needs to be read
-func needRead(ctx context.Context, expr *plan.Expr, meta objectio.ObjectMeta, blkInfo BlockMeta, tableDef *plan.TableDef, columnMap map[int]int, columns []int, maxCol int, proc *process.Process) bool {
+func needRead(ctx context.Context, expr *plan.Expr, meta objectio.ObjectMeta, blkInfo catalog.BlockInfo, tableDef *plan.TableDef, columnMap map[int]int, columns []int, maxCol int, proc *process.Process) bool {
 	var err error
 	if expr == nil {
 		return true
@@ -472,7 +465,7 @@ func needRead(ctx context.Context, expr *plan.Expr, meta objectio.ObjectMeta, bl
 
 	// // use all min/max data to build []vectors.
 	// buildVectors := plan2.BuildVectorsByData(datas, dataTypes, proc.Mp())
-	buildVectors, err := buildColumnsZMVectors(meta, int(blkInfo.Info.MetaLocation().ID()), columns, tableDef, proc.Mp())
+	buildVectors, err := buildColumnsZMVectors(meta, int(blkInfo.MetaLocation().ID()), columns, tableDef, proc.Mp())
 	if err != nil || len(buildVectors) == 0 {
 		return true
 	}
@@ -497,13 +490,13 @@ func needRead(ctx context.Context, expr *plan.Expr, meta objectio.ObjectMeta, bl
 }
 
 // get row count of block
-func blockRows(meta BlockMeta) int64 {
-	return meta.Rows
+func blockRows(meta catalog.BlockInfo) int64 {
+	return int64(meta.MetaLocation().Rows())
 }
 
-func blockInfoMarshal(meta BlockMeta) []byte {
-	sz := unsafe.Sizeof(meta.Info)
-	return unsafe.Slice((*byte)(unsafe.Pointer(&meta.Info)), sz)
+func blockInfoMarshal(meta catalog.BlockInfo) []byte {
+	sz := unsafe.Sizeof(meta)
+	return unsafe.Slice((*byte)(unsafe.Pointer(&meta)), sz)
 }
 
 func BlockInfoUnmarshal(data []byte) catalog.BlockInfo {
