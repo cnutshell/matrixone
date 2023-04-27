@@ -28,6 +28,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/defines"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
+	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
 	"github.com/matrixorigin/matrixone/pkg/pb/metadata"
 	"github.com/matrixorigin/matrixone/pkg/pb/plan"
@@ -1060,22 +1061,22 @@ func genBlockMetas(
 	columnLength int,
 	fs fileservice.FileService,
 	m *mpool.MPool, prefetch bool) ([]BlockMeta, error) {
-	{
-		mp := make(map[types.Blockid]catalog.BlockInfo) // block list
-		for i := range blockInfos {
-			if blk, ok := mp[blockInfos[i].BlockID]; ok {
-				if blk.CommitTs.Less(blockInfos[i].CommitTs) {
-					mp[blk.BlockID] = blockInfos[i]
-				}
-			} else {
-				mp[blockInfos[i].BlockID] = blockInfos[i]
-			}
-		}
-		blockInfos = blockInfos[:0]
-		for _, blk := range mp {
-			blockInfos = append(blockInfos, blk)
-		}
-	}
+	// {
+	// 	mp := make(map[types.Blockid]catalog.BlockInfo) // block list
+	// 	for i := range blockInfos {
+	// 		if blk, ok := mp[blockInfos[i].BlockID]; ok {
+	// 			if blk.CommitTs.Less(blockInfos[i].CommitTs) {
+	// 				mp[blk.BlockID] = blockInfos[i]
+	// 			}
+	// 		} else {
+	// 			mp[blockInfos[i].BlockID] = blockInfos[i]
+	// 		}
+	// 	}
+	// 	blockInfos = blockInfos[:0]
+	// 	for _, blk := range mp {
+	// 		blockInfos = append(blockInfos, blk)
+	// 	}
+	// }
 
 	metas := make([]BlockMeta, len(blockInfos))
 
@@ -1118,9 +1119,14 @@ func genModifedBlocks(ctx context.Context, deletes map[types.Blockid][]int, orgs
 
 	exprMono := plantool.CheckExprIsMonotonic(ctx, expr)
 	columnMap, columns, maxCol := plantool.GetColumnsByExpr(expr, tableDef)
+	var meta objectio.ObjectMeta
 	for i, blk := range orgs {
 		if !inBlockMap(blk, blockMap) {
-			if !exprMono || needRead(ctx, expr, blk, tableDef, columnMap, columns, maxCol, proc) {
+			location := blk.Info.MetaLocation()
+			if !objectio.IsSameObjectLocVsMeta(location, meta) {
+				meta, _ = loadObjectMeta(ctx, location, proc.FileService, proc.Mp())
+			}
+			if !exprMono || needRead(ctx, expr, meta, blk, tableDef, columnMap, columns, maxCol, proc) {
 				blks = append(blks, ModifyBlockMeta{
 					meta:    orgs[i],
 					deletes: deletes[orgs[i].Info.BlockID],

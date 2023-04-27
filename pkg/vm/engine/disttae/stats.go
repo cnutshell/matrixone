@@ -106,12 +106,17 @@ func CalcStats(ctx context.Context, blocks *[][]BlockMeta, expr *plan.Expr, tabl
 	var tableCnt, cost int64
 	exprMono := plan2.CheckExprIsMonotonic(ctx, expr)
 	columnMap, columns, maxCol := plan2.GetColumnsByExpr(expr, tableDef)
+	var meta objectio.ObjectMeta
 	for i := range *blocks {
-		for j := range (*blocks)[i] {
+		for j, blk := range (*blocks)[i] {
 			blockNumTotal++
-			tableCnt += (*blocks)[i][j].Rows
-			if !exprMono || needRead(ctx, expr, (*blocks)[i][j], tableDef, columnMap, columns, maxCol, proc) {
-				cost += (*blocks)[i][j].Rows
+			tableCnt += int64((*blocks)[i][j].Info.MetaLocation().Rows())
+			location := blk.Info.MetaLocation()
+			if !objectio.IsSameObjectLocVsMeta(location, meta) {
+				meta, _ = loadObjectMeta(ctx, location, proc.FileService, proc.Mp())
+			}
+			if !exprMono || needRead(ctx, expr, meta, (*blocks)[i][j], tableDef, columnMap, columns, maxCol, proc) {
+				cost += int64((*blocks)[i][j].Info.MetaLocation().Rows())
 				blockNumNeed++
 			}
 		}

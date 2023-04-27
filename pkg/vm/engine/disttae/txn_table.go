@@ -25,6 +25,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
+	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
 	"github.com/matrixorigin/matrixone/pkg/pb/plan"
 	"github.com/matrixorigin/matrixone/pkg/pb/timestamp"
@@ -35,7 +36,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/compute"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
 )
 
@@ -121,56 +121,57 @@ func (tbl *txnTable) Rows(ctx context.Context) (rows int64, err error) {
 }
 
 func (tbl *txnTable) MaxAndMinValues(ctx context.Context) ([][2]any, []uint8, error) {
-	cols := tbl.getTableDef().GetCols()
-	dataLength := len(cols) - 1
-	//dateType of each column for table
-	tableTypes := make([]uint8, dataLength)
-	dataTypes := make([]types.Type, dataLength)
+	return nil, nil, nil
+	//cols := tbl.getTableDef().GetCols()
+	//dataLength := len(cols) - 1
+	////dateType of each column for table
+	//tableTypes := make([]uint8, dataLength)
+	//dataTypes := make([]types.Type, dataLength)
 
-	columns := make([]int, dataLength)
-	for i := 0; i < dataLength; i++ {
-		columns[i] = i
-	}
-	//minimum --- maximum
-	tableVal := make([][2]any, dataLength)
+	//columns := make([]int, dataLength)
+	//for i := 0; i < dataLength; i++ {
+	//	columns[i] = i
+	//}
+	////minimum --- maximum
+	//tableVal := make([][2]any, dataLength)
 
-	if len(tbl.blockMetas) == 0 {
-		return nil, nil, moerr.NewInvalidInputNoCtx("table meta is nil")
-	}
+	//if len(tbl.blockMetas) == 0 {
+	//	return nil, nil, moerr.NewInvalidInputNoCtx("table meta is nil")
+	//}
 
-	var init bool
-	for _, blks := range tbl.blockMetas {
-		for _, blk := range blks {
-			blkVal, blkTypes, err := getZonemapDataFromMeta(columns, blk, tbl.getTableDef())
-			if err != nil {
-				return nil, nil, err
-			}
+	//var init bool
+	//for _, blks := range tbl.blockMetas {
+	//	for _, blk := range blks {
+	//		blkVal, blkTypes, err := getZonemapDataFromMeta(columns, blk, tbl.getTableDef())
+	//		if err != nil {
+	//			return nil, nil, err
+	//		}
 
-			if !init {
-				//init the tableVal
-				init = true
+	//		if !init {
+	//			//init the tableVal
+	//			init = true
 
-				for i := range blkVal {
-					tableVal[i][0] = blkVal[i][0]
-					tableVal[i][1] = blkVal[i][1]
-					dataTypes[i] = types.T(blkTypes[i]).ToType()
-				}
+	//			for i := range blkVal {
+	//				tableVal[i][0] = blkVal[i][0]
+	//				tableVal[i][1] = blkVal[i][1]
+	//				dataTypes[i] = types.T(blkTypes[i]).ToType()
+	//			}
 
-				tableTypes = blkTypes
-			} else {
-				for i := range blkVal {
-					if compute.CompareGeneric(blkVal[i][0], tableVal[i][0], dataTypes[i].Oid) < 0 {
-						tableVal[i][0] = blkVal[i][0]
-					}
+	//			tableTypes = blkTypes
+	//		} else {
+	//			for i := range blkVal {
+	//				if compute.CompareGeneric(blkVal[i][0], tableVal[i][0], dataTypes[i].Oid) < 0 {
+	//					tableVal[i][0] = blkVal[i][0]
+	//				}
 
-					if compute.CompareGeneric(blkVal[i][1], tableVal[i][1], dataTypes[i].Oid) > 0 {
-						tableVal[i][1] = blkVal[i][1]
-					}
-				}
-			}
-		}
-	}
-	return tableVal, tableTypes, nil
+	//				if compute.CompareGeneric(blkVal[i][1], tableVal[i][1], dataTypes[i].Oid) > 0 {
+	//					tableVal[i][1] = blkVal[i][1]
+	//				}
+	//			}
+	//		}
+	//	}
+	//}
+	//return tableVal, tableTypes, nil
 }
 
 func (tbl *txnTable) Size(ctx context.Context, name string) (int64, error) {
@@ -307,9 +308,14 @@ func (tbl *txnTable) Ranges(ctx context.Context, expr *plan.Expr) ([][]byte, err
 				}
 			}
 		}
+		var meta objectio.ObjectMeta
 		for _, blk := range blks {
 			tbl.skipBlocks[blk.Info.BlockID] = 0
-			if !exprMono || needRead(ctx, expr, blk, tbl.getTableDef(), columnMap, columns, maxCol, tbl.db.txn.proc) {
+			location := blk.Info.MetaLocation()
+			if !objectio.IsSameObjectLocVsMeta(location, meta) {
+				meta, _ = loadObjectMeta(ctx, location, tbl.db.txn.proc.FileService, tbl.db.txn.proc.Mp())
+			}
+			if !exprMono || needRead(ctx, expr, meta, blk, tbl.getTableDef(), columnMap, columns, maxCol, tbl.db.txn.proc) {
 				ranges = append(ranges, blockInfoMarshal(blk))
 			}
 		}

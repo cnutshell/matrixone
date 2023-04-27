@@ -17,15 +17,16 @@ package disttae
 import (
 	"context"
 	"math"
+	"os"
 	"strings"
 	"time"
 	"unsafe"
 
 	"github.com/matrixorigin/matrixone/pkg/catalog"
-	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/plan"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec"
@@ -46,7 +47,10 @@ func (txn *Transaction) getBlockMetas(
 ) ([][]BlockMeta, error) {
 
 	blocks := make([][]BlockMeta, len(txn.dnStores))
-	name := genMetaTableName(tableId)
+	if prefetch {
+		return blocks, nil
+	}
+	// name := genMetaTableName(tableId)
 	ts := types.TimestampToTS(txn.meta.SnapshotTS)
 	if needUpdated {
 		states := txn.engine.getPartitions(databaseId, tableId).Snapshot()
@@ -54,23 +58,43 @@ func (txn *Transaction) getBlockMetas(
 			if i >= len(states) {
 				continue
 			}
-			var blockInfos []catalog.BlockInfo
+			// var blockInfos []catalog.BlockInfo
 			state := states[i]
 			iter := state.Blocks.Iter()
+			var meta objectio.ObjectMeta
+			var err error
 			for ok := iter.First(); ok; ok = iter.Next() {
 				entry := iter.Item()
 				if !entry.Visible(ts) {
 					continue
 				}
-				blockInfos = append(blockInfos, entry.BlockInfo)
+				location := entry.BlockInfo.MetaLocation()
+				if !objectio.IsSameObjectLocVsMeta(location, meta) {
+					// meta, err = loadObjectMeta(context.Background(), location, txn.proc.FileService, txn.proc.Mp())
+					meta, err = loadObjectMeta(ctx, location, txn.proc.FileService, txn.proc.Mp())
+					if err != nil {
+						logutil.Infof("KKKKKKKKKKKKKK %v", err)
+						os.Exit(1)
+					}
+				}
+				blk := BlockMeta{Info: entry.BlockInfo}
+				blk.Rows = int64(location.Rows())
+				blk.Zonemap = make([]Zonemap, columnLength)
+				logutil.Infof("XXXXXXXXXXX %s, %d,%d", location.String(), columnLength, meta.BlockHeader().ColumnCount())
+				for j := 0; j < columnLength; j++ {
+					logutil.Infof("HHHHHHHH %s, %d,%d", location.String(), location.ID(), j)
+					copy(blk.Zonemap[j][:], meta.GetColumnMeta(uint32(location.ID()), uint16(j)).ZoneMap())
+				}
+				// blockInfos = append(blockInfos, entry.BlockInfo)
+				blocks[i] = append(blocks[i], blk)
 			}
 			iter.Release()
-			var err error
-			blocks[i], err = genBlockMetas(ctx, blockInfos, columnLength, txn.proc.FileService,
-				txn.proc.GetMPool(), prefetch)
-			if err != nil {
-				return nil, moerr.NewInternalError(ctx, "disttae: getTableMeta err: %v, table: %v", err.Error(), name)
-			}
+			// var err error
+			// blocks[i], err = genBlockMetas(ctx, blockInfos, columnLength, txn.proc.FileService,
+			// 	txn.proc.GetMPool(), prefetch)
+			// if err != nil {
+			// 	return nil, moerr.NewInternalError(ctx, "disttae: getTableMeta err: %v, table: %v", err.Error(), name)
+			// }
 		}
 	}
 	return blocks, nil
@@ -422,7 +446,7 @@ func (txn *Transaction) genRowId() types.Rowid {
 }
 
 // needRead determine if a block needs to be read
-func needRead(ctx context.Context, expr *plan.Expr, blkInfo BlockMeta, tableDef *plan.TableDef, columnMap map[int]int, columns []int, maxCol int, proc *process.Process) bool {
+func needRead(ctx context.Context, expr *plan.Expr, meta objectio.ObjectMeta, blkInfo BlockMeta, tableDef *plan.TableDef, columnMap map[int]int, columns []int, maxCol int, proc *process.Process) bool {
 	var err error
 	if expr == nil {
 		return true
@@ -440,14 +464,18 @@ func needRead(ctx context.Context, expr *plan.Expr, blkInfo BlockMeta, tableDef 
 		return ifNeed
 	}
 
-	// get min max data from Meta
-	datas, dataTypes, err := getZonemapDataFromMeta(columns, blkInfo, tableDef)
-	if err != nil || datas == nil {
+	// // get min max data from Meta
+	// datas, dataTypes, err := getZonemapDataFromMeta(columns, blkInfo, tableDef)
+	// if err != nil || datas == nil {
+	// 	return true
+	// }
+
+	// // use all min/max data to build []vectors.
+	// buildVectors := plan2.BuildVectorsByData(datas, dataTypes, proc.Mp())
+	buildVectors, err := buildColumnsZMVectors(meta, int(blkInfo.Info.MetaLocation().ID()), columns, tableDef, proc.Mp())
+	if err != nil || len(buildVectors) == 0 {
 		return true
 	}
-
-	// use all min/max data to build []vectors.
-	buildVectors := plan2.BuildVectorsByData(datas, dataTypes, proc.Mp())
 	bat := batch.NewWithSize(maxCol + 1)
 	defer bat.Clean(proc.Mp())
 	for k, v := range columnMap {
