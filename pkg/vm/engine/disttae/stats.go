@@ -102,28 +102,34 @@ func getInfoFromZoneMap(ctx context.Context, columns []int, blocks *[][]catalog.
 
 // calculate the stats for scan node.
 // we need to get the zonemap from cn, and eval the filters with zonemap
-func CalcStats(ctx context.Context, blocks *[][]catalog.BlockInfo, expr *plan.Expr, tableDef *plan.TableDef, proc *process.Process, sortKeyName string, s *plan2.StatsInfoMap) (*plan.Stats, error) {
+func CalcStats(ctx context.Context, blocks *[][]catalog.BlockInfo, expr *plan.Expr, tableDef *plan.TableDef, proc *process.Process, sortKeyName string, s *plan2.StatsInfoMap) (stats *plan.Stats, err error) {
 	var blockNumNeed, blockNumTotal int
 	var tableCnt, cost int64
 	exprMono := plan2.CheckExprIsMonotonic(ctx, expr)
 	columnMap, columns, maxCol := plan2.GetColumnsByExpr(expr, tableDef)
 	var meta objectio.ObjectMeta
 	for i := range *blocks {
-		for j, blk := range (*blocks)[i] {
-			blockNumTotal++
-			tableCnt += int64((*blocks)[i][j].MetaLocation().Rows())
+		for _, blk := range (*blocks)[i] {
 			location := blk.MetaLocation()
-			if !objectio.IsSameObjectLocVsMeta(location, meta) {
-				meta, _ = loadObjectMeta(ctx, location, proc.FileService, proc.Mp())
+			blockNumTotal++
+			tableCnt += int64(location.Rows())
+			ok := true
+			if exprMono {
+				if !objectio.IsSameObjectLocVsMeta(location, meta) {
+					if meta, err = loadObjectMeta(ctx, location, proc.FileService, proc.Mp()); err != nil {
+						return
+					}
+				}
+				ok = needRead(ctx, expr, meta, blk, tableDef, columnMap, columns, maxCol, proc)
 			}
-			if !exprMono || needRead(ctx, expr, meta, (*blocks)[i][j], tableDef, columnMap, columns, maxCol, proc) {
-				cost += int64((*blocks)[i][j].MetaLocation().Rows())
+			if ok {
+				cost += int64(location.Rows())
 				blockNumNeed++
 			}
 		}
 	}
 
-	stats := new(plan.Stats)
+	stats = new(plan.Stats)
 	stats.BlockNum = int32(blockNumNeed)
 	stats.TableCnt = float64(tableCnt)
 	stats.Cost = float64(cost)
