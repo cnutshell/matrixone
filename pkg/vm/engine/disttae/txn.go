@@ -49,10 +49,18 @@ func (txn *Transaction) getBlockList(
 		}
 		state := states[i]
 		iter := state.Blocks.Iter()
+		var objectName objectio.ObjectNameShort
 		for ok := iter.First(); ok; ok = iter.Next() {
 			entry := iter.Item()
 			if !entry.Visible(ts) {
 				continue
+			}
+			location := entry.BlockInfo.MetaLocation()
+			if !objectio.IsSameObjectLocVsShort(location, &objectName) {
+				// Prefetch object meta
+				if err = blockio.PrefetchMeta(txn.proc.FileService, location); err != nil {
+					return
+				}
 			}
 			blocks[i] = append(blocks[i], entry.BlockInfo)
 		}
