@@ -225,10 +225,7 @@ func (tbl *txnTable) reset(newId uint64) {
 }
 
 // return all unmodified blocks
-func (tbl *txnTable) Ranges(ctx context.Context, expr *plan.Expr) ([][]byte, error) {
-	// if err := tbl.db.txn.DumpBatch(false, 0); err != nil {
-	// 	return nil, err
-	// }
+func (tbl *txnTable) Ranges(ctx context.Context, expr *plan.Expr) (ranges [][]byte, err error) {
 	tbl.db.txn.Lock()
 	tbl.writes = tbl.writes[:0]
 	tbl.writesOffset = len(tbl.db.txn.writes)
@@ -243,17 +240,16 @@ func (tbl *txnTable) Ranges(ctx context.Context, expr *plan.Expr) ([][]byte, err
 	}
 	tbl.db.txn.Unlock()
 
-	err := tbl.updateMeta(ctx, expr)
-	if err != nil {
-		return nil, err
+	if err = tbl.updateMeta(ctx, expr); err != nil {
+		return
 	}
 	parts := tbl.getParts()
 
-	ranges := make([][]byte, 0, 1)
+	ranges = make([][]byte, 0, 1)
 	ranges = append(ranges, []byte{})
 	tbl.skipBlocks = make(map[types.Blockid]uint8)
 	if len(tbl.blockList) == 0 {
-		return ranges, nil
+		return
 	}
 	tbl.modifiedBlocks = make([][]ModifyBlockMeta, len(tbl.blockList))
 
@@ -288,7 +284,7 @@ func (tbl *txnTable) Ranges(ctx context.Context, expr *plan.Expr) ([][]byte, err
 				iter.Close()
 				// DN flush deletes rowids block
 				if err = tbl.LoadDeletesForBlock(string(blockID[:]), deletes, nil); err != nil {
-					return nil, err
+					return
 				}
 			}
 			for _, entry := range tbl.writes {
@@ -310,18 +306,35 @@ func (tbl *txnTable) Ranges(ctx context.Context, expr *plan.Expr) ([][]byte, err
 		var meta objectio.ObjectMeta
 		for _, blk := range blks {
 			tbl.skipBlocks[blk.BlockID] = 0
-			location := blk.MetaLocation()
-			if !objectio.IsSameObjectLocVsMeta(location, meta) {
-				meta, _ = loadObjectMeta(ctx, location, tbl.db.txn.proc.FileService, tbl.db.txn.proc.Mp())
+			ok := true
+			if exprMono {
+				location := blk.MetaLocation()
+				if !objectio.IsSameObjectLocVsMeta(location, meta) {
+					if meta, err = loadObjectMeta(ctx, location, tbl.db.txn.proc.FileService, tbl.db.txn.proc.Mp()); err != nil {
+						return
+					}
+				}
+				ok = needRead(ctx, expr, meta, blk, tbl.getTableDef(), columnMap, columns, maxCol, tbl.db.txn.proc)
 			}
-			if !exprMono || needRead(ctx, expr, meta, blk, tbl.getTableDef(), columnMap, columns, maxCol, tbl.db.txn.proc) {
+
+			if ok {
 				ranges = append(ranges, blockInfoMarshal(blk))
 			}
 		}
-		tbl.modifiedBlocks[i] = genModifedBlocks(ctx, deletes,
-			tbl.blockList[i], blks, expr, tbl.getTableDef(), tbl.db.txn.proc)
+		var mblks []ModifyBlockMeta
+		if mblks, err = genModifedBlocks(
+			ctx,
+			deletes,
+			tbl.blockList[i],
+			blks,
+			expr,
+			tbl.getTableDef(),
+			tbl.db.txn.proc); err != nil {
+			return
+		}
+		tbl.modifiedBlocks[i] = mblks
 	}
-	return ranges, nil
+	return
 }
 
 // getTableDef only return all cols and their index.

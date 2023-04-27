@@ -1060,9 +1060,9 @@ func inBlockMap(blk catalog.BlockInfo, blockMap map[types.Blockid]bool) bool {
 }
 
 func genModifedBlocks(ctx context.Context, deletes map[types.Blockid][]int, orgs, modfs []catalog.BlockInfo,
-	expr *plan.Expr, tableDef *plan.TableDef, proc *process.Process) []ModifyBlockMeta {
-	blks := make([]ModifyBlockMeta, 0, len(orgs)-len(modfs))
+	expr *plan.Expr, tableDef *plan.TableDef, proc *process.Process) (blks []ModifyBlockMeta, err error) {
 
+	blks = make([]ModifyBlockMeta, 0, len(orgs)-len(modfs))
 	lenblks := len(modfs)
 	blockMap := make(map[types.Blockid]bool, lenblks)
 	for i := 0; i < lenblks; i++ {
@@ -1075,10 +1075,16 @@ func genModifedBlocks(ctx context.Context, deletes map[types.Blockid][]int, orgs
 	for i, blk := range orgs {
 		if !inBlockMap(blk, blockMap) {
 			location := blk.MetaLocation()
-			if !objectio.IsSameObjectLocVsMeta(location, meta) {
-				meta, _ = loadObjectMeta(ctx, location, proc.FileService, proc.Mp())
+			ok := true
+			if exprMono {
+				if !objectio.IsSameObjectLocVsMeta(location, meta) {
+					if meta, err = loadObjectMeta(ctx, location, proc.FileService, proc.Mp()); err != nil {
+						return
+					}
+				}
+				ok = needRead(ctx, expr, meta, blk, tableDef, columnMap, columns, maxCol, proc)
 			}
-			if !exprMono || needRead(ctx, expr, meta, blk, tableDef, columnMap, columns, maxCol, proc) {
+			if ok {
 				blks = append(blks, ModifyBlockMeta{
 					meta:    orgs[i],
 					deletes: deletes[orgs[i].BlockID],
@@ -1086,7 +1092,7 @@ func genModifedBlocks(ctx context.Context, deletes map[types.Blockid][]int, orgs
 			}
 		}
 	}
-	return blks
+	return
 }
 
 func genInsertBatch(bat *batch.Batch, m *mpool.MPool) (*api.Batch, error) {
