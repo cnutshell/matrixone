@@ -35,62 +35,30 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
 )
 
-func (txn *Transaction) getBlockMetas(
+func (txn *Transaction) getBlockList(
 	ctx context.Context,
 	databaseId uint64,
 	tableId uint64,
-	needUpdated bool,
-	columnLength int,
-	prefetch bool,
-) ([][]catalog.BlockInfo, error) {
-
-	blocks := make([][]catalog.BlockInfo, len(txn.dnStores))
-	if prefetch {
-		return blocks, nil
-	}
-	// name := genMetaTableName(tableId)
+) (blocks [][]catalog.BlockInfo, err error) {
+	blocks = make([][]catalog.BlockInfo, len(txn.dnStores))
 	ts := types.TimestampToTS(txn.meta.SnapshotTS)
-	if needUpdated {
-		states := txn.engine.getPartitions(databaseId, tableId).Snapshot()
-		for i := range txn.dnStores {
-			if i >= len(states) {
+	states := txn.engine.getPartitions(databaseId, tableId).Snapshot()
+	for i := range txn.dnStores {
+		if i >= len(states) {
+			continue
+		}
+		state := states[i]
+		iter := state.Blocks.Iter()
+		for ok := iter.First(); ok; ok = iter.Next() {
+			entry := iter.Item()
+			if !entry.Visible(ts) {
 				continue
 			}
-			// var blockInfos []catalog.BlockInfo
-			state := states[i]
-			iter := state.Blocks.Iter()
-			// var meta objectio.ObjectMeta
-			// var err error
-			for ok := iter.First(); ok; ok = iter.Next() {
-				entry := iter.Item()
-				if !entry.Visible(ts) {
-					continue
-				}
-				// location := entry.BlockInfo.MetaLocation()
-				// if !objectio.IsSameObjectLocVsMeta(location, meta) {
-				// 	// meta, err = loadObjectMeta(context.Background(), location, txn.proc.FileService, txn.proc.Mp())
-				// 	if meta, err = loadObjectMeta(ctx, location, txn.proc.FileService, txn.proc.Mp()); err != nil {
-				// 		return nil, err
-				// 	}
-				// }
-				// blk.Rows = int64(location.Rows())
-				// blk.Zonemap = make([]Zonemap, columnLength)
-				// for j := 0; j < columnLength; j++ {
-				// 	copy(blk.Zonemap[j][:], meta.GetColumnMeta(uint32(location.ID()), uint16(j)).ZoneMap())
-				// }
-				// blockInfos = append(blockInfos, entry.BlockInfo)
-				blocks[i] = append(blocks[i], entry.BlockInfo)
-			}
-			iter.Release()
-			// var err error
-			// blocks[i], err = genBlockMetas(ctx, blockInfos, columnLength, txn.proc.FileService,
-			// 	txn.proc.GetMPool(), prefetch)
-			// if err != nil {
-			// 	return nil, moerr.NewInternalError(ctx, "disttae: getTableMeta err: %v, table: %v", err.Error(), name)
-			// }
+			blocks[i] = append(blocks[i], entry.BlockInfo)
 		}
+		iter.Release()
 	}
-	return blocks, nil
+	return
 }
 
 // detecting whether a transaction is a read-only transaction

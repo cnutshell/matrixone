@@ -27,7 +27,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/defines"
-	"github.com/matrixorigin/matrixone/pkg/fileservice"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
 	"github.com/matrixorigin/matrixone/pkg/pb/metadata"
@@ -1053,53 +1052,6 @@ func init() {
 
 func isMetaTable(name string) bool {
 	return metaTableMatchRegexp.MatchString(name)
-}
-
-func genBlockMetas(
-	ctx context.Context,
-	blockInfos []catalog.BlockInfo,
-	columnLength int,
-	fs fileservice.FileService,
-	m *mpool.MPool, prefetch bool) ([]BlockMeta, error) {
-	// {
-	// 	mp := make(map[types.Blockid]catalog.BlockInfo) // block list
-	// 	for i := range blockInfos {
-	// 		if blk, ok := mp[blockInfos[i].BlockID]; ok {
-	// 			if blk.CommitTs.Less(blockInfos[i].CommitTs) {
-	// 				mp[blk.BlockID] = blockInfos[i]
-	// 			}
-	// 		} else {
-	// 			mp[blockInfos[i].BlockID] = blockInfos[i]
-	// 		}
-	// 	}
-	// 	blockInfos = blockInfos[:0]
-	// 	for _, blk := range mp {
-	// 		blockInfos = append(blockInfos, blk)
-	// 	}
-	// }
-
-	metas := make([]BlockMeta, len(blockInfos))
-
-	idxs := make([]uint16, columnLength)
-	for i := 0; i < columnLength; i++ {
-		idxs[i] = uint16(i)
-	}
-
-	for i, blockInfo := range blockInfos {
-		zm, rows, err := fetchZonemapAndRowsFromBlockInfo(ctx, idxs, blockInfo, fs, m)
-		if err != nil {
-			if prefetch {
-				continue
-			}
-			return nil, err
-		}
-		metas[i] = BlockMeta{
-			Rows:    int64(rows),
-			Info:    blockInfos[i],
-			Zonemap: zm,
-		}
-	}
-	return metas, nil
 }
 
 func inBlockMap(blk catalog.BlockInfo, blockMap map[types.Blockid]bool) bool {

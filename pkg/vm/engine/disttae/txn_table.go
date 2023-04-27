@@ -50,14 +50,14 @@ func (tbl *txnTable) Stats(ctx context.Context, expr *plan.Expr, statsInfoMap an
 	if !ok {
 		return plan2.DefaultStats(), nil
 	}
-	if len(tbl.blockMetas) == 0 || !tbl.updated {
+	if len(tbl.blockList) == 0 || !tbl.updated {
 		err := tbl.updateMeta(ctx, expr)
 		if err != nil {
 			return plan2.DefaultStats(), err
 		}
 	}
-	if len(tbl.blockMetas) > 0 {
-		return CalcStats(ctx, &tbl.blockMetas, expr, tbl.getTableDef(), tbl.db.txn.proc, tbl.getCbName(), s)
+	if len(tbl.blockList) > 0 {
+		return CalcStats(ctx, &tbl.blockList, expr, tbl.getTableDef(), tbl.db.txn.proc, tbl.getCbName(), s)
 	} else {
 		// no meta means not flushed yet, very small table
 		return plan2.DefaultStats(), nil
@@ -110,8 +110,8 @@ func (tbl *txnTable) Rows(ctx context.Context) (rows int64, err error) {
 		iter.Close()
 	}
 
-	if len(tbl.blockMetas) > 0 {
-		for _, blks := range tbl.blockMetas {
+	if len(tbl.blockList) > 0 {
+		for _, blks := range tbl.blockList {
 			for _, blk := range blks {
 				rows += blockRows(blk)
 			}
@@ -122,7 +122,7 @@ func (tbl *txnTable) Rows(ctx context.Context) (rows int64, err error) {
 }
 
 func (tbl *txnTable) MaxAndMinValues(ctx context.Context) ([][2]any, []uint8, error) {
-	if len(tbl.blockMetas) == 0 {
+	if len(tbl.blockList) == 0 {
 		return nil, nil, moerr.NewInvalidInputNoCtx("table meta is nil")
 	}
 
@@ -139,7 +139,7 @@ func (tbl *txnTable) MaxAndMinValues(ctx context.Context) ([][2]any, []uint8, er
 		init bool
 		meta objectio.ObjectMeta
 	)
-	for _, blks := range tbl.blockMetas {
+	for _, blks := range tbl.blockList {
 		for _, blk := range blks {
 			location := blk.MetaLocation()
 			if objectio.IsSameObjectLocVsMeta(location, meta) {
@@ -218,7 +218,7 @@ func (tbl *txnTable) reset(newId uint64) {
 	tbl.tableId = newId
 	tbl.setPartsOnce = sync.Once{}
 	tbl._parts = nil
-	tbl.blockMetas = nil
+	tbl.blockList = nil
 	tbl.modifiedBlocks = nil
 	tbl.updated = false
 	tbl.localState = NewPartitionState(true)
@@ -252,15 +252,15 @@ func (tbl *txnTable) Ranges(ctx context.Context, expr *plan.Expr) ([][]byte, err
 	ranges := make([][]byte, 0, 1)
 	ranges = append(ranges, []byte{})
 	tbl.skipBlocks = make(map[types.Blockid]uint8)
-	if len(tbl.blockMetas) == 0 {
+	if len(tbl.blockList) == 0 {
 		return ranges, nil
 	}
-	tbl.modifiedBlocks = make([][]ModifyBlockMeta, len(tbl.blockMetas))
+	tbl.modifiedBlocks = make([][]ModifyBlockMeta, len(tbl.blockList))
 
 	exprMono := plan2.CheckExprIsMonotonic(tbl.db.txn.proc.Ctx, expr)
 	columnMap, columns, maxCol := plan2.GetColumnsByExpr(expr, tbl.getTableDef())
 	for _, i := range tbl.dnList {
-		blocks := tbl.blockMetas[i]
+		blocks := tbl.blockList[i]
 		blks := make([]catalog.BlockInfo, 0, len(blocks))
 		deletes := make(map[types.Blockid][]int)
 		if len(blocks) > 0 {
@@ -319,7 +319,7 @@ func (tbl *txnTable) Ranges(ctx context.Context, expr *plan.Expr) ([][]byte, err
 			}
 		}
 		tbl.modifiedBlocks[i] = genModifedBlocks(ctx, deletes,
-			tbl.blockMetas[i], blks, expr, tbl.getTableDef(), tbl.db.txn.proc)
+			tbl.blockList[i], blks, expr, tbl.getTableDef(), tbl.db.txn.proc)
 	}
 	return ranges, nil
 }
@@ -778,7 +778,7 @@ func (tbl *txnTable) newMergeReader(ctx context.Context, num int,
 	for _, i := range tbl.dnList {
 		var blks []ModifyBlockMeta
 
-		if len(tbl.blockMetas) > 0 {
+		if len(tbl.blockList) > 0 {
 			blks = tbl.modifiedBlocks[i]
 		}
 		rds0, err := tbl.newReader(
@@ -887,8 +887,8 @@ func (tbl *txnTable) newReader(
 	}
 	// get append block deletes rowids
 	non_append_block := make(map[string]bool)
-	if len(tbl.blockMetas) > 0 {
-		for _, blk := range tbl.blockMetas[0] {
+	if len(tbl.blockList) > 0 {
+		for _, blk := range tbl.blockList[0] {
 			// append non_append_block
 			if !blk.EntryState {
 				non_append_block[string(blk.BlockID[:])] = true

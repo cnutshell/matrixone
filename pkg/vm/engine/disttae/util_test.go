@@ -19,12 +19,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/pb/plan"
 	plan2 "github.com/matrixorigin/matrixone/pkg/sql/plan"
 	"github.com/matrixorigin/matrixone/pkg/sql/plan/function"
 	"github.com/matrixorigin/matrixone/pkg/testutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
+	"github.com/stretchr/testify/require"
 )
 
 func makeColExprForTest(idx int32, typ types.T) *plan.Expr {
@@ -88,57 +90,13 @@ func makeBlockMetaForTest() BlockMeta {
 	}
 }
 
-func getTableDefBySchemaAndType(name string, columns []string, schema []string, types []types.Type) *plan.TableDef {
-	columnsMap := make(map[string]struct{})
-	for _, col := range columns {
-		columnsMap[col] = struct{}{}
-	}
-
-	var cols []*plan.ColDef
-	nameToIndex := make(map[string]int32)
-
-	for i, col := range schema {
-		if _, ok := columnsMap[col]; ok {
-			cols = append(cols, &plan.ColDef{
-				Name: col,
-				Typ:  plan2.MakePlan2Type(&types[i]),
-			})
-		}
-		nameToIndex[col] = int32(i)
-	}
-
-	return &plan.TableDef{
-		Name:          name,
-		Cols:          cols,
-		Name2ColIndex: nameToIndex,
-	}
-}
-
-func makeTableDefForTest(columns []string) *plan.TableDef {
-	schema := []string{"a", "b", "c", "d"}
-	types := []types.Type{
-		types.T_int64.ToType(),
-		types.T_int64.ToType(),
-		types.T_int64.ToType(),
-		types.T_int64.ToType(),
-	}
-	return getTableDefBySchemaAndType("t1", columns, schema, types)
-}
-
 func TestBlockMetaMarshal(t *testing.T) {
-	// location := []byte("test")
-	// meta := BlockMeta{
-	// 	Info: catalog.BlockInfo{},
-	// 	Zonemap: []Zonemap{
-	// 		makeZonemapForTest(types.T_int64, int64(10), int64(100)),
-	// 		makeZonemapForTest(types.T_blob, []byte("a"), []byte("h")),
-	// 		// makeZonemapForTest(types.T_varchar, "a", "h"),
-	// 	},
-	// }
-	// meta.Info.SetMetaLocation(location)
-	// data := blockInfoMarshal(meta)
-	// meta0 := BlockInfoUnmarshal(data)
-	// require.Equal(t, meta.Info, meta0)
+	location := []byte("test")
+	var info catalog.BlockInfo
+	info.SetMetaLocation(location)
+	data := blockInfoMarshal(info)
+	info2 := BlockInfoUnmarshal(data)
+	require.Equal(t, info, info2)
 }
 
 func TestCheckExprIsMonotonic(t *testing.T) {

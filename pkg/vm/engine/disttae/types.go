@@ -235,7 +235,7 @@ type txnTable struct {
 	setPartsOnce   sync.Once
 	_parts         []*PartitionState
 	modifiedBlocks [][]ModifyBlockMeta
-	blockMetas     [][]catalog.BlockInfo
+	blockList      [][]catalog.BlockInfo
 
 	primaryIdx   int // -1 means no primary key
 	clusterByIdx int // -1 means no clusterBy key
