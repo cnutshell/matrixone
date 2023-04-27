@@ -36,6 +36,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
 )
 
@@ -121,57 +122,55 @@ func (tbl *txnTable) Rows(ctx context.Context) (rows int64, err error) {
 }
 
 func (tbl *txnTable) MaxAndMinValues(ctx context.Context) ([][2]any, []uint8, error) {
-	return nil, nil, nil
-	//cols := tbl.getTableDef().GetCols()
-	//dataLength := len(cols) - 1
-	////dateType of each column for table
-	//tableTypes := make([]uint8, dataLength)
-	//dataTypes := make([]types.Type, dataLength)
+	if len(tbl.blockMetas) == 0 {
+		return nil, nil, moerr.NewInvalidInputNoCtx("table meta is nil")
+	}
 
-	//columns := make([]int, dataLength)
-	//for i := 0; i < dataLength; i++ {
-	//	columns[i] = i
-	//}
-	////minimum --- maximum
-	//tableVal := make([][2]any, dataLength)
+	cols := tbl.getTableDef().GetCols()
+	dataLength := len(cols) - 1
 
-	//if len(tbl.blockMetas) == 0 {
-	//	return nil, nil, moerr.NewInvalidInputNoCtx("table meta is nil")
-	//}
+	tableTypes := make([]uint8, dataLength)
 
-	//var init bool
-	//for _, blks := range tbl.blockMetas {
-	//	for _, blk := range blks {
-	//		blkVal, blkTypes, err := getZonemapDataFromMeta(columns, blk, tbl.getTableDef())
-	//		if err != nil {
-	//			return nil, nil, err
-	//		}
+	tableVal := make([][2]any, dataLength)
+	zms := make([]objectio.ZoneMap, dataLength)
 
-	//		if !init {
-	//			//init the tableVal
-	//			init = true
+	var (
+		err  error
+		init bool
+		meta objectio.ObjectMeta
+	)
+	for _, blks := range tbl.blockMetas {
+		for _, blk := range blks {
+			location := blk.MetaLocation()
+			if objectio.IsSameObjectLocVsMeta(location, meta) {
+				continue
+			} else {
+				if meta, err = loadObjectMeta(ctx, location, tbl.db.txn.proc.FileService, tbl.db.txn.proc.Mp()); err != nil {
+					return nil, nil, err
+				}
+			}
+			if !init {
+				for idx := range zms {
+					zms[idx] = meta.ObjectColumnMeta(uint16(idx)).ZoneMap()
+					tableTypes[idx] = uint8(cols[idx].Typ.Id)
+				}
 
-	//			for i := range blkVal {
-	//				tableVal[i][0] = blkVal[i][0]
-	//				tableVal[i][1] = blkVal[i][1]
-	//				dataTypes[i] = types.T(blkTypes[i]).ToType()
-	//			}
+				init = true
+			} else {
+				for idx := range zms {
+					zm := meta.ObjectColumnMeta(uint16(idx)).ZoneMap()
+					index.UpdateZM(&zms[idx], zm.GetMaxBuf())
+					index.UpdateZM(&zms[idx], zm.GetMinBuf())
+				}
+			}
+		}
+	}
 
-	//			tableTypes = blkTypes
-	//		} else {
-	//			for i := range blkVal {
-	//				if compute.CompareGeneric(blkVal[i][0], tableVal[i][0], dataTypes[i].Oid) < 0 {
-	//					tableVal[i][0] = blkVal[i][0]
-	//				}
+	for idx, zm := range zms {
+		tableVal[idx] = [2]any{zm.GetMin(), zm.GetMax()}
+	}
 
-	//				if compute.CompareGeneric(blkVal[i][1], tableVal[i][1], dataTypes[i].Oid) > 0 {
-	//					tableVal[i][1] = blkVal[i][1]
-	//				}
-	//			}
-	//		}
-	//	}
-	//}
-	//return tableVal, tableTypes, nil
+	return tableVal, tableTypes, nil
 }
 
 func (tbl *txnTable) Size(ctx context.Context, name string) (int64, error) {
