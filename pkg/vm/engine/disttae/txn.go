@@ -61,6 +61,7 @@ func (txn *Transaction) getBlockList(
 				if err = blockio.PrefetchMeta(txn.proc.FileService, location); err != nil {
 					return
 				}
+				objectName = *location.Name().Short()
 			}
 			blocks[i] = append(blocks[i], entry.BlockInfo)
 		}
