@@ -53,6 +53,11 @@ func (s *ObjectNameShort) Equal(o []byte) bool {
 	return bytes.Equal(s[:], o)
 }
 
+// Compare compares two ObjectNameShort
+func (s *ObjectNameShort) Compare(than *ObjectNameShort) int {
+	return bytes.Compare(s[:], than[:])
+}
+
 func (o ObjectName) String() string {
 	return string(o[NameStringOff : NameStringOff+NameStringLen])
 }

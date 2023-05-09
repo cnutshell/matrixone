@@ -45,6 +45,7 @@ type PartitionState struct {
 	// also modify the Copy method if adding fields
 	rows         *btree.BTreeG[RowEntry] // use value type to avoid locking on elements
 	blocks       *btree.BTreeG[BlockEntry]
+	objects      *btree.BTreeG[ObjectEntry]
 	primaryIndex *btree.BTreeG[*PrimaryIndexEntry]
 	checkpoints  []string
 
@@ -92,6 +93,26 @@ func (r RowEntry) Less(than RowEntry) bool {
 	return false
 }
 
+// ObjectEntry collects objects by objectio.ObjectNameShort.
+// NOTE: ObjectNameShort is encoded within catalog.ObjectLocation.
+type ObjectEntry struct {
+	metaLocation catalog.ObjectLocation
+
+	// FIXME: update CreateTime and DeleteTime when replaying
+	CreateTime types.TS
+	DeleteTime types.TS
+}
+
+// ObjectNameShort returns the short object name.
+func (o *ObjectEntry) ObjectShortName() *objectio.ObjectNameShort {
+	return objectio.Location(o.metaLocation[:]).ShortName()
+}
+
+// Less compares ObjectEntry by ObjectShortName.
+func (o ObjectEntry) Less(than ObjectEntry) bool {
+	return o.ObjectShortName().Compare(than.ObjectShortName()) < 0
+}
+
 type BlockEntry struct {
 	catalog.BlockInfo
 
@@ -134,6 +155,7 @@ func NewPartitionState(noData bool) *PartitionState {
 		noData:       noData,
 		rows:         btree.NewBTreeGOptions((RowEntry).Less, opts),
 		blocks:       btree.NewBTreeGOptions((BlockEntry).Less, opts),
+		objects:      btree.NewBTreeGOptions((ObjectEntry).Less, opts),
 		primaryIndex: btree.NewBTreeGOptions((*PrimaryIndexEntry).Less, opts),
 	}
 }
@@ -142,6 +164,7 @@ func (p *PartitionState) Copy() *PartitionState {
 	state := PartitionState{
 		rows:         p.rows.Copy(),
 		blocks:       p.blocks.Copy(),
+		objects:      p.objects.Copy(),
 		primaryIndex: p.primaryIndex.Copy(),
 		noData:       p.noData,
 	}
@@ -342,7 +365,8 @@ func (p *PartitionState) HandleMetadataInsert(ctx context.Context, input *api.Ba
 	commitTimeVector := vector.MustFixedCol[types.TS](mustVectorFromProto(input.Vecs[7]))
 	segmentIDVector := vector.MustFixedCol[types.Uuid](mustVectorFromProto(input.Vecs[8]))
 
-	var numInserted, numDeleted int64
+	// FIXME: apply objInserted to perfcounter
+	var numInserted, numDeleted, objInserted int64
 	for i, blockID := range blockIDVector {
 		moprobe.WithRegion(ctx, moprobe.PartitionStateHandleMetaInsert, func() {
 
@@ -376,6 +400,15 @@ func (p *PartitionState) HandleMetadataInsert(ctx context.Context, input *api.Ba
 			entry.EntryState = entryStateVector[i]
 
 			p.blocks.Set(entry)
+
+			// update p.Objects when necessary
+			objectPivot := ObjectEntry{
+				metaLocation: entry.MetaLoc,
+			}
+			if _, ok := p.objects.Get(objectPivot); !ok {
+				p.objects.Set(objectPivot)
+				objInserted += 1
+			}
 
 			if entryStateVector[i] {
 				iter := p.rows.Copy().Iter()
