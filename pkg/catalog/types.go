@@ -252,6 +252,11 @@ const (
 
 type ObjectLocation [objectio.LocationLen]byte
 
+// ToLocation converts ObjectLocation to objectio.Location.
+func (m *ObjectLocation) ToLocation() objectio.Location {
+	return m[:]
+}
+
 // ProtoSize is used by gogoproto.
 func (m *ObjectLocation) ProtoSize() int {
 	return objectio.LocationLen
@@ -306,7 +311,7 @@ type BlockInfo struct {
 }
 
 func (b *BlockInfo) MetaLocation() objectio.Location {
-	return b.MetaLoc[:]
+	return b.MetaLoc.ToLocation()
 }
 
 func (b *BlockInfo) SetMetaLocation(metaLoc objectio.Location) {
@@ -314,7 +319,7 @@ func (b *BlockInfo) SetMetaLocation(metaLoc objectio.Location) {
 }
 
 func (b *BlockInfo) DeltaLocation() objectio.Location {
-	return b.DeltaLoc[:]
+	return b.DeltaLoc.ToLocation()
 }
 
 func (b *BlockInfo) SetDeltaLocation(deltaLoc objectio.Location) {

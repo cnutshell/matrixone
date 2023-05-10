@@ -28,11 +28,11 @@ var (
 )
 
 // BenchmarkObjectEntry checks heap allocation for ObjectEntry.
-// $ go test -run None -bench BenchmarkObjectEntry -benchmem
+// go test -run None -bench BenchmarkObjectEntry -benchmem
 func BenchmarkObjectEntry(b *testing.B) {
 	location := [objectio.LocationLen]byte{1, 2, 3, 4, 5, 6, 7, 8}
 	obj := ObjectEntry{
-		metaLocation: location,
+		location: location,
 	}
 
 	b.Run("ObjectShortName", func(b *testing.B) {
@@ -53,7 +53,7 @@ func BenchmarkObjectEntry(b *testing.B) {
 }
 
 // BenchmarkBlockEntry checks heap allocation for BlockEntry.Less.
-// $ go test -run None -bench BenchmarkBlockEntry -benchmem
+// go test -run None -bench BenchmarkBlockEntry -benchmem
 func BenchmarkBlockEntry(b *testing.B) {
 	blkLhs := BlockEntry{
 		BlockInfo: catalog.BlockInfo{

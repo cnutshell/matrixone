@@ -38,12 +38,26 @@ func TestObjectLocationMarshalAndUnmarshal(t *testing.T) {
 
 var globalLocation objectio.Location
 
+// BenchmarkBlockInfoMetaLocation checks heap allocation for BlockInfo.MetaLocation.
+// go test -run None -bench BenchmarkBlockInfoMetaLocation -benchmem
 func BenchmarkBlockInfoMetaLocation(b *testing.B) {
 	info := BlockInfo{}
 	b.ResetTimer()
-	var loc objectio.Location
+	var ret objectio.Location
 	for i := 0; i < b.N; i++ {
-		loc = info.MetaLocation()
+		ret = info.MetaLocation()
 	}
-	globalLocation = loc
+	globalLocation = ret
+}
+
+// BenchmarkObjectLocationToLocation checks heap allocation for ObjectLocation.ToLocation.
+// go test -run None -bench BenchmarkObjectLocationToLocation -benchmem
+func BenchmarkObjectLocationToLocation(b *testing.B) {
+	loc := ObjectLocation{}
+	b.ResetTimer()
+	var ret objectio.Location
+	for i := 0; i < b.N; i++ {
+		ret = loc.ToLocation()
+	}
+	globalLocation = ret
 }

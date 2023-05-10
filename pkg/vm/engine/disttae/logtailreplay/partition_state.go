@@ -96,7 +96,7 @@ func (r RowEntry) Less(than RowEntry) bool {
 // ObjectEntry collects objects by objectio.ObjectNameShort.
 // NOTE: ObjectNameShort is encoded within catalog.ObjectLocation.
 type ObjectEntry struct {
-	metaLocation catalog.ObjectLocation
+	location catalog.ObjectLocation
 
 	// FIXME: update CreateTime and DeleteTime when replaying
 	CreateTime types.TS
@@ -105,7 +105,7 @@ type ObjectEntry struct {
 
 // ObjectNameShort returns the short object name.
 func (o *ObjectEntry) ObjectShortName() *objectio.ObjectNameShort {
-	return objectio.Location(o.metaLocation[:]).ShortName()
+	return o.location.ToLocation().ShortName()
 }
 
 // Less compares ObjectEntry by ObjectShortName.
@@ -403,7 +403,7 @@ func (p *PartitionState) HandleMetadataInsert(ctx context.Context, input *api.Ba
 
 			// update p.Objects when necessary
 			objectPivot := ObjectEntry{
-				metaLocation: entry.MetaLoc,
+				location: entry.MetaLoc,
 			}
 			if _, ok := p.objects.Get(objectPivot); !ok {
 				p.objects.Set(objectPivot)
