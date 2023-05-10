@@ -98,8 +98,8 @@ func (r RowEntry) Less(than RowEntry) bool {
 type ObjectEntry struct {
 	location catalog.ObjectLocation
 
-	// FIXME: update CreateTime and DeleteTime when replaying
 	CreateTime types.TS
+	// FIXME: update DeleteTime when replaying
 	DeleteTime types.TS
 }
 
@@ -111,6 +111,12 @@ func (o *ObjectEntry) ObjectShortName() *objectio.ObjectNameShort {
 // Less compares ObjectEntry by ObjectShortName.
 func (o ObjectEntry) Less(than ObjectEntry) bool {
 	return o.ObjectShortName().Compare(than.ObjectShortName()) < 0
+}
+
+// Visible returns whether the object is visible at the given timestamp.
+func (o *ObjectEntry) Visible(ts types.TS) bool {
+	return o.CreateTime.LessEq(ts) &&
+		(o.DeleteTime.IsEmpty() || ts.Less(o.DeleteTime))
 }
 
 type BlockEntry struct {
@@ -401,14 +407,22 @@ func (p *PartitionState) HandleMetadataInsert(ctx context.Context, input *api.Ba
 
 			p.blocks.Set(entry)
 
-			// update p.Objects when necessary
+			// update p.objects when necessary
 			objectPivot := ObjectEntry{
 				location: entry.MetaLoc,
 			}
-			if _, ok := p.objects.Get(objectPivot); !ok {
-				p.objects.Set(objectPivot)
+			objectEntry, ok := p.objects.Get(objectPivot)
+			if !ok {
+				objectEntry = objectPivot
 				objInserted += 1
 			}
+			// update ObjectEntry.CreateTime on the basis of BlockEntry.CreateTime
+			if !entry.CreateTime.IsEmpty() {
+				if objectEntry.CreateTime.IsEmpty() || entry.CreateTime.Less(objectEntry.CreateTime) {
+					objectEntry.CreateTime = entry.CreateTime
+				}
+			}
+			p.objects.Set(objectEntry)
 
 			if entryStateVector[i] {
 				iter := p.rows.Copy().Iter()
