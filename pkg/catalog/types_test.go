@@ -17,6 +17,7 @@ package catalog
 import (
 	"testing"
 
+	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,4 +34,16 @@ func TestObjectLocationMarshalAndUnmarshal(t *testing.T) {
 	err = ret.Unmarshal(data)
 	require.NoError(t, err)
 	require.Equal(t, loc, ret)
+}
+
+var globalLocation objectio.Location
+
+func BenchmarkBlockInfoMetaLocation(b *testing.B) {
+	info := BlockInfo{}
+	b.ResetTimer()
+	var loc objectio.Location
+	for i := 0; i < b.N; i++ {
+		loc = info.MetaLocation()
+	}
+	globalLocation = loc
 }
