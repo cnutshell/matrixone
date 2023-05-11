@@ -99,8 +99,12 @@ type ObjectEntry struct {
 	location catalog.ObjectLocation
 
 	CreateTime types.TS
-	// FIXME: update DeleteTime when replaying
 	DeleteTime types.TS
+}
+
+// BelongsToSegment returns whether the object entry belongs to the given segment.
+func (o *ObjectEntry) BelongsToSegment(seg *types.Segmentid) bool {
+	return o.location.BelongsToSegment(seg)
 }
 
 // ObjectNameShort returns the short object name.
@@ -229,7 +233,7 @@ func (p *PartitionState) HandleLogtailEntry(
 		if IsBlkTable(entry.TableName) {
 			p.HandleMetadataDelete(ctx, entry.Bat)
 		} else if IsSegTable(entry.TableName) {
-			// TODO p.HandleSegDelete(ctx, entry.Bat)
+			p.HandleSegDelete(ctx, entry.Bat)
 		} else {
 			p.HandleRowsDelete(ctx, entry.Bat)
 		}
@@ -460,6 +464,44 @@ func (p *PartitionState) HandleMetadataInsert(ctx context.Context, input *api.Ba
 	})
 }
 
+func (p *PartitionState) HandleSegDelete(ctx context.Context, input *api.Batch) {
+	ctx, task := trace.NewTask(ctx, "PartitionState.HandleSegDelete")
+	defer task.End()
+
+	rowIDVector := vector.MustFixedCol[types.Rowid](mustVectorFromProto(input.Vecs[0]))
+	deleteTimeVector := vector.MustFixedCol[types.TS](mustVectorFromProto(input.Vecs[1]))
+
+	for i, rowID := range rowIDVector {
+		segmentID := rowID.SegmentID()
+
+		trace.WithRegion(ctx, "handle a segment delete", func() {
+			// padding catalog.ObjectLocation with segment id
+			var location catalog.ObjectLocation
+			copy(location[:], segmentID[:])
+
+			objectPivot := ObjectEntry{
+				location: location,
+			}
+
+			iter := p.objects.Copy().Iter()
+			for ok := iter.Seek(objectPivot); ok; ok = iter.Next() {
+				objectEntry := iter.Item()
+				if !objectEntry.BelongsToSegment(segmentID) {
+					break
+				}
+				objectEntry.DeleteTime = deleteTimeVector[i]
+				p.objects.Set(objectEntry)
+			}
+		})
+	}
+
+	partitionStateProfileHandler.AddSample()
+	perfcounter.Update(ctx, func(c *perfcounter.CounterSet) {
+		c.DistTAE.Logtail.Entries.Add(1)
+		c.DistTAE.Logtail.SegmentDeleteEntries.Add(1)
+	})
+}
+
 func (p *PartitionState) HandleMetadataDelete(ctx context.Context, input *api.Batch) {
 	ctx, task := trace.NewTask(ctx, "PartitionState.HandleMetadataDelete")
 	defer task.End()
@@ -468,6 +510,7 @@ func (p *PartitionState) HandleMetadataDelete(ctx context.Context, input *api.Ba
 	deleteTimeVector := vector.MustFixedCol[types.TS](mustVectorFromProto(input.Vecs[1]))
 
 	for i, rowID := range rowIDVector {
+		// NOTE: check heap allocation or not
 		blockID := *rowID.GetBlockid()
 		trace.WithRegion(ctx, "handle a row", func() {
 

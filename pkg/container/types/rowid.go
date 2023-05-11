@@ -70,8 +70,13 @@ func (r Rowid) GetBlockid() *Blockid {
 	return (*Blockid)(r[:BlockidSize])
 }
 
+// FIXME: non-pointer receiver would incur heap allocation.
 func (r Rowid) GetSegid() *Segmentid {
 	return (*Uuid)(r[:UuidSize])
+}
+
+func (r *Rowid) SegmentID() *Segmentid {
+	return (*Segmentid)(unsafe.Pointer(&r[0]))
 }
 
 func (r Rowid) Decode() (Blockid, uint32) {

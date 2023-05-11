@@ -15,6 +15,7 @@
 package catalog
 
 import (
+	"bytes"
 	"strings"
 	"unsafe"
 
@@ -250,7 +251,22 @@ const (
 	SKIP_ROWID_OFFSET = 1 //rowid is the 0th vector in the batch
 )
 
+/*
+	                     _________________________________
+		                /           ObjectLocation        \
+						-----------------------------------
+			            | ObjectName | Extent | Rows | ID |
+						-----------------------------------
+				_______/              \_________
+				| SegmentId | Offset | NameStr |
+				--------------------------------
+*/
 type ObjectLocation [objectio.LocationLen]byte
+
+// BelongsToSegment returns true if the object belongs to the segment.
+func (m *ObjectLocation) BelongsToSegment(seg *types.Segmentid) bool {
+	return bytes.Compare(seg[:], m[:len(seg)]) == 0
+}
 
 // ToLocation converts ObjectLocation to objectio.Location.
 func (m *ObjectLocation) ToLocation() objectio.Location {
