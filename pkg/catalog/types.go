@@ -265,7 +265,7 @@ type ObjectLocation [objectio.LocationLen]byte
 
 // BelongsToSegment returns true if the object belongs to the segment.
 func (m *ObjectLocation) BelongsToSegment(seg *types.Segmentid) bool {
-	return bytes.Compare(seg[:], m[:len(seg)]) == 0
+	return bytes.Equal(seg[:], m[:len(seg)])
 }
 
 // ToLocation converts ObjectLocation to objectio.Location.
