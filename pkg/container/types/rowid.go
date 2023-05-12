@@ -66,27 +66,40 @@ func (r Rowid) Equal(to Rowid) bool {
 	return bytes.Equal(r[:], to[:])
 }
 
+// NOTE: non-pointer receiver would incur heap allocation.
 func (r Rowid) GetBlockid() *Blockid {
 	return (*Blockid)(r[:BlockidSize])
 }
 
-// FIXME: non-pointer receiver would incur heap allocation.
+// NOTE: non-pointer receiver would incur heap allocation.
 func (r Rowid) GetSegid() *Segmentid {
 	return (*Uuid)(r[:UuidSize])
 }
 
-func (r *Rowid) SegmentID() *Segmentid {
+// CloneBlockID clones the block id from row id.
+func (r *Rowid) CloneBlockID() Blockid {
+	return *(*Blockid)(unsafe.Pointer(&r[0]))
+}
+
+// BorrowBlockID borrows block id from row id.
+func (r *Rowid) BorrowBlockID() *Blockid {
+	return (*Blockid)(unsafe.Pointer(&r[0]))
+}
+
+// BorrowSegmentID borrows segment id from row id.
+func (r *Rowid) BorrowSegmentID() *Segmentid {
 	return (*Segmentid)(unsafe.Pointer(&r[0]))
+}
+
+// CloneSegmentID clones segment id from row id.
+func (r *Rowid) CloneSegmentID() Segmentid {
+	return *(*Segmentid)(unsafe.Pointer(&r[0]))
 }
 
 func (r Rowid) Decode() (Blockid, uint32) {
 	b := *(*Blockid)(r[:BlockidSize])
 	s := DecodeUint32(r[BlockidSize:])
 	return b, s
-}
-
-func (r *Rowid) GetBlockidUnsafe() *Blockid {
-	return (*Blockid)(unsafe.Pointer(&r[0]))
 }
 
 func (r Rowid) GetObject() ObjectBytes {

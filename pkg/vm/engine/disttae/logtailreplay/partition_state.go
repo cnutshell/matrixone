@@ -184,7 +184,7 @@ func (p *PartitionState) RowExists(rowID types.Rowid, ts types.TS) bool {
 	iter := p.rows.Iter()
 	defer iter.Release()
 
-	blockID := *rowID.GetBlockid()
+	blockID := rowID.CloneBlockID()
 	for ok := iter.Seek(RowEntry{
 		BlockID: blockID,
 		RowID:   rowID,
@@ -267,7 +267,7 @@ func (p *PartitionState) HandleRowsInsert(
 	for i, rowID := range rowIDVector {
 		moprobe.WithRegion(ctx, moprobe.PartitionStateHandleInsert, func() {
 
-			blockID := *rowID.GetBlockid()
+			blockID := rowID.CloneBlockID()
 			pivot := RowEntry{
 				BlockID: blockID,
 				RowID:   rowID,
@@ -328,7 +328,7 @@ func (p *PartitionState) HandleRowsDelete(ctx context.Context, input *api.Batch)
 	for i, rowID := range rowIDVector {
 		moprobe.WithRegion(ctx, moprobe.PartitionStateHandleDel, func() {
 
-			blockID := *rowID.GetBlockid()
+			blockID := rowID.CloneBlockID()
 			pivot := RowEntry{
 				BlockID: blockID,
 				RowID:   rowID,
@@ -468,7 +468,7 @@ func (p *PartitionState) HandleSegDelete(ctx context.Context, input *api.Batch) 
 
 	var objDeleted int64
 	for i, rowID := range rowIDVector {
-		segmentID := rowID.SegmentID()
+		segmentID := rowID.BorrowSegmentID()
 
 		trace.WithRegion(ctx, "handle a segment delete", func() {
 			// padding catalog.ObjectLocation with segment id
@@ -509,8 +509,7 @@ func (p *PartitionState) HandleMetadataDelete(ctx context.Context, input *api.Ba
 
 	var blkDeleted int64
 	for i, rowID := range rowIDVector {
-		// FIXME: check heap allocation or not
-		blockID := *rowID.GetBlockid()
+		blockID := rowID.CloneBlockID()
 		trace.WithRegion(ctx, "handle a row", func() {
 
 			pivot := BlockEntry{
