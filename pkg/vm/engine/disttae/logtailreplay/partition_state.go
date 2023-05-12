@@ -370,7 +370,6 @@ func (p *PartitionState) HandleMetadataInsert(ctx context.Context, input *api.Ba
 	commitTimeVector := vector.MustFixedCol[types.TS](mustVectorFromProto(input.Vecs[7]))
 	segmentIDVector := vector.MustFixedCol[types.Uuid](mustVectorFromProto(input.Vecs[8]))
 
-	// FIXME: apply objInserted to perfcounter
 	var numInserted, numDeleted, objInserted int64
 	for i, blockID := range blockIDVector {
 		moprobe.WithRegion(ctx, moprobe.PartitionStateHandleMetaInsert, func() {
@@ -456,6 +455,7 @@ func (p *PartitionState) HandleMetadataInsert(ctx context.Context, input *api.Ba
 		c.DistTAE.Logtail.MetadataInsertEntries.Add(1)
 		c.DistTAE.Logtail.ActiveRows.Add(-numDeleted)
 		c.DistTAE.Logtail.InsertBlocks.Add(numInserted)
+		c.DistTAE.Logtail.InsertObjects.Add(objInserted)
 	})
 }
 
