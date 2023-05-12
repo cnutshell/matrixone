@@ -466,6 +466,7 @@ func (p *PartitionState) HandleSegDelete(ctx context.Context, input *api.Batch) 
 	rowIDVector := vector.MustFixedCol[types.Rowid](mustVectorFromProto(input.Vecs[0]))
 	deleteTimeVector := vector.MustFixedCol[types.TS](mustVectorFromProto(input.Vecs[1]))
 
+	var objDeleted int64
 	for i, rowID := range rowIDVector {
 		segmentID := rowID.SegmentID()
 
@@ -486,6 +487,7 @@ func (p *PartitionState) HandleSegDelete(ctx context.Context, input *api.Batch) 
 				}
 				objectEntry.DeleteTime = deleteTimeVector[i]
 				p.objects.Set(objectEntry)
+				objDeleted += 1
 			}
 		})
 	}
@@ -493,7 +495,8 @@ func (p *PartitionState) HandleSegDelete(ctx context.Context, input *api.Batch) 
 	partitionStateProfileHandler.AddSample()
 	perfcounter.Update(ctx, func(c *perfcounter.CounterSet) {
 		c.DistTAE.Logtail.Entries.Add(1)
-		c.DistTAE.Logtail.SegmentDeleteEntries.Add(1)
+		c.DistTAE.Logtail.DeleteSegments.Add(1)
+		c.DistTAE.Logtail.DeleteObjects.Add(objDeleted)
 	})
 }
 
@@ -504,8 +507,9 @@ func (p *PartitionState) HandleMetadataDelete(ctx context.Context, input *api.Ba
 	rowIDVector := vector.MustFixedCol[types.Rowid](mustVectorFromProto(input.Vecs[0]))
 	deleteTimeVector := vector.MustFixedCol[types.TS](mustVectorFromProto(input.Vecs[1]))
 
+	var blkDeleted int64
 	for i, rowID := range rowIDVector {
-		// NOTE: check heap allocation or not
+		// FIXME: check heap allocation or not
 		blockID := *rowID.GetBlockid()
 		trace.WithRegion(ctx, "handle a row", func() {
 
@@ -522,6 +526,7 @@ func (p *PartitionState) HandleMetadataDelete(ctx context.Context, input *api.Ba
 			entry.DeleteTime = deleteTimeVector[i]
 
 			p.blocks.Set(entry)
+			blkDeleted += 1
 		})
 	}
 
@@ -529,6 +534,7 @@ func (p *PartitionState) HandleMetadataDelete(ctx context.Context, input *api.Ba
 	perfcounter.Update(ctx, func(c *perfcounter.CounterSet) {
 		c.DistTAE.Logtail.Entries.Add(1)
 		c.DistTAE.Logtail.MetadataDeleteEntries.Add(1)
+		c.DistTAE.Logtail.DeleteBlocks.Add(blkDeleted)
 	})
 }
 
