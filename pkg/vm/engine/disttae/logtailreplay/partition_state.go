@@ -102,11 +102,6 @@ type ObjectEntry struct {
 	DeleteTime types.TS
 }
 
-// BelongsToSegment returns whether the object entry belongs to the given segment.
-func (o *ObjectEntry) BelongsToSegment(seg *types.Segmentid) bool {
-	return o.location.BelongsToSegment(seg)
-}
-
 // ObjectNameShort returns the short object name.
 func (o *ObjectEntry) ObjectShortName() *objectio.ObjectNameShort {
 	return o.location.ToLocation().ShortName()
@@ -486,7 +481,7 @@ func (p *PartitionState) HandleSegDelete(ctx context.Context, input *api.Batch) 
 			iter := p.objects.Copy().Iter()
 			for ok := iter.Seek(objectPivot); ok; ok = iter.Next() {
 				objectEntry := iter.Item()
-				if !objectEntry.BelongsToSegment(segmentID) {
+				if !objectEntry.location.BelongsToSegment(segmentID) {
 					break
 				}
 				objectEntry.DeleteTime = deleteTimeVector[i]
