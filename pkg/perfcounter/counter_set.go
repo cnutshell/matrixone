@@ -74,8 +74,8 @@ type DistTAECounterSet struct {
 	Logtail struct {
 		Entries               stats.Counter
 		InsertEntries         stats.Counter
-		MetadataInsertEntries stats.Counter
 		DeleteEntries         stats.Counter
+		MetadataInsertEntries stats.Counter
 		MetadataDeleteEntries stats.Counter
 
 		InsertRows     stats.Counter
