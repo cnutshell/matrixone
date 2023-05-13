@@ -466,6 +466,16 @@ func (p *PartitionState) HandleSegDelete(ctx context.Context, input *api.Batch) 
 	rowIDVector := vector.MustFixedCol[types.Rowid](mustVectorFromProto(input.Vecs[0]))
 	deleteTimeVector := vector.MustFixedCol[types.TS](mustVectorFromProto(input.Vecs[1]))
 
+	// empty row id, no need to update perfcounter
+	if len(rowIDVector) == 0 && len(deleteTimeVector) == 0 {
+		return
+	}
+
+	// assert vector matching
+	if len(deleteTimeVector) != len(deleteTimeVector) {
+		panic("number of row id doesn't match with number of delete time")
+	}
+
 	var objDeleted int64
 	for i, rowID := range rowIDVector {
 		segmentID := rowID.BorrowSegmentID()
