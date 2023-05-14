@@ -505,8 +505,8 @@ func (p *PartitionState) HandleSegDelete(ctx context.Context, input *api.Batch) 
 	partitionStateProfileHandler.AddSample()
 	perfcounter.Update(ctx, func(c *perfcounter.CounterSet) {
 		c.DistTAE.Logtail.Entries.Add(1)
-		c.DistTAE.Logtail.DeleteSegments.Add(1)
-		c.DistTAE.Logtail.DeleteObjects.Add(objDeleted)
+		c.DistTAE.Logtail.SoftDeleteSegments.Add(1)
+		c.DistTAE.Logtail.SoftDeleteObjects.Add(objDeleted)
 	})
 }
 

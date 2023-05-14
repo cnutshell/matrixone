@@ -78,13 +78,13 @@ type DistTAECounterSet struct {
 		MetadataInsertEntries stats.Counter
 		MetadataDeleteEntries stats.Counter
 
-		InsertRows     stats.Counter
-		ActiveRows     stats.Counter
-		InsertBlocks   stats.Counter
-		DeleteBlocks   stats.Counter
-		InsertObjects  stats.Counter
-		DeleteObjects  stats.Counter
-		DeleteSegments stats.Counter
+		InsertRows         stats.Counter
+		ActiveRows         stats.Counter
+		InsertBlocks       stats.Counter
+		DeleteBlocks       stats.Counter
+		InsertObjects      stats.Counter
+		SoftDeleteObjects  stats.Counter
+		SoftDeleteSegments stats.Counter
 	}
 }
 
