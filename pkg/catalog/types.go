@@ -252,14 +252,14 @@ const (
 )
 
 /*
-	                     _________________________________
-		                /           ObjectLocation        \
-						-----------------------------------
-			            | ObjectName | Extent | Rows | ID |
-						-----------------------------------
-				_______/              \_________
-				| SegmentId | Offset | NameStr |
-				--------------------------------
+___________________________________
+|           ObjectLocation        |
+-----------------------------------
+| ObjectName | Extent | Rows | ID |
+-----------------------------------
+|            \__________________
+| SegmentId | Offset | NameStr |
+--------------------------------
 */
 type ObjectLocation [objectio.LocationLen]byte
 
